@@ -2,8 +2,8 @@
   "domain": "pools",
   "name": "Random Pools",
   "version": "0.2.0",
-  "documentation": "https://github.com/yourname/ha-random-pools",
-  "codeowners": ["@rio-fenris", "@yourname"],
+  "documentation": "https://github.com/hariolu/ha-random-pools",
+  "codeowners": ["@hariolu"],
   "iot_class": "local_polling",
   "requirements": []
 }
