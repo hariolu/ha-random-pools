@@ -10,15 +10,15 @@ Perfect if you want your automations or bots to respond with random phrases, pla
 - 🎶 Load sound pools from folders with audio files (`.mp3`, `.ogg`).  
 - 🎲 Each pool is exposed as a `sensor` that always provides one random entry.  
 - 🔄 Shuffle & reload without restarting Home Assistant.  
-- 🛟 Safe fallbacks if a pool is empty.  
+- ⚙️ Safe fallbacks if a pool is empty.  
 
 ---
 
 ## 🛠 Example Use Cases
-- 🤖 **Random bot replies**: send different phrases in Telegram/Discord automations.  
-- 🗣 **Dynamic TTS**: pick a random greeting line before announcing the weather.  
-- 🚨 **Sound notifications**: choose a random alert sound when motion is detected.  
-- 🚀 **Startup events**: play a random "system online" phrase or sound.  
+- 🤖 **Random bot replies** — send different phrases in Telegram/Discord automations.  
+- 🗣 **Dynamic TTS** — pick a random greeting line before announcing the weather.  
+- 🚨 **Sound notifications** — choose a random alert sound when motion is detected.  
+- 🚀 **Startup events** — play a random "system online" phrase or sound.  
 
 ---
 
@@ -26,23 +26,38 @@ Perfect if you want your automations or bots to respond with random phrases, pla
 
 ### Example 1: Text Pool
 Put a file `hello.txt` in `/config/www/pools/text/`:
+
+```
 Hello there!
 Welcome back home.
 Howdy partner 🐾
+```
 
-Creates a sensor: sensor.pools_text_hello
+This creates a sensor:  
+
+```
+sensor.pools_text_hello
+```
+
 → which randomly returns one of the lines.
 
 ---
 
 ### Example 2: Sound Pool
 Create a folder `/config/www/pools/sounds/woof/` with `.mp3` files.  
-You’ll get: sensor.pools_sound_woof 
-→ returns a random file path, ready for media players.
+
+This creates a sensor:  
+
+```
+sensor.pools_sound_woof
+```
+
+→ which returns a random file path, ready for media players.
 
 ---
 
 ### Example 3: Automation with Telegram
+
 ```yaml
 alias: Send random hello in Telegram
 trigger:
@@ -54,12 +69,16 @@ action:
   - service: telegram_bot.send_message
     data:
       message: "{{ states('sensor.pools_text_hello') }}"
-
-⚙️ Commands:
-pools.shuffle — reshuffle one or more sensors.
-pools.reload — reload pools from disk.
 ```
 
-📜 License
-Released under the MIT License.
+---
+
+## ⚙️ Commands
+- 🔀 `pools.shuffle` — reshuffle one or more sensors.  
+- ♻️ `pools.reload` — reload pools from disk.  
+
+---
+
+## 📜 License
+Released under the **MIT License**.  
 Feel free to use, modify, and share — just keep the credit 🌟.
