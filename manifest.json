@@ -1,5 +1,5 @@
 {
-  "domain": "pools",
+  "domain": "ha-random-pools",
   "name": "Random Pools",
   "version": "0.2.0",
   "documentation": "https://github.com/hariolu/ha-random-pools",
