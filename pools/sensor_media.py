@@ -1,15 +1,5 @@
 # All comments in English.
-# sensor_media.py — "Media" pools (formerly "sounds")
-# Features:
-# - selection_mode: random | queue
-# - no_repeat: N (history-based anti-repeat for random)
-# - fallback_url
-# - include/exclude (glob)
-# - media_extensions (any playable by your client, e.g., VLC)
-# - serve_from: component | www | media  → builds URLs accordingly
-# - Autodiscovery when media_pools not specified
-# - Reduced logging noise on expected conditions
-
+# Media platform (formerly "sounds")
 from __future__ import annotations
 
 import logging
@@ -53,19 +43,17 @@ from .const import (
     ATTR_LAST_FILE,
     ATTR_RELATIVE_URL,
     ATTR_ABSOLUTE_URL,
-    ATTR_DIR_MTIME,
     ATTR_SHUFFLE_COUNT,
     ATTR_RELOAD_COUNT,
     ATTR_LAST_SHUFFLE,
     ATTR_LAST_RELOAD,
     ATTR_FILE,
 )
-
-# Global registry imported from __init__.py (keys are entity_id → object with async_* APIs)
-from . import POOLS  # noqa: F401  (import used at runtime)
+from . import POOLS  # global registry
+from .utils import slugify, resolve_path, match_patterns
+from .discover import scan_media_folders
 
 _LOGGER = logging.getLogger(__name__)
-
 
 # ───────────────────────── Schemas ─────────────────────────
 
@@ -93,44 +81,11 @@ PLATFORM_SCHEMA = vol.Schema(
     }
 )
 
-
-# ───────────────────────── Utilities ─────────────────────────
-
-def _slugify(s: str) -> str:
-    s = s.lower()
-    out: List[str] = []
-    prev_us = False
-    for ch in s:
-        if ch.isalnum():
-            out.append(ch)
-            prev_us = False
-        else:
-            if not prev_us:
-                out.append("_")
-                prev_us = True
-    return "".join(out).strip("_")
-
+# ───────────────────────── Helpers ─────────────────────────
 
 def _derive_suffix(folder: str) -> str:
-    base = _slugify(os.path.basename(folder))
+    base = slugify(os.path.basename(folder))
     return f"pools_media_{base}"
-
-
-def _resolve_hass_path(hass: HomeAssistant, rel: str) -> str:
-    if rel.startswith("/"):
-        return rel
-    return hass.config.path(rel)
-
-
-def _match_patterns(name: str, includes: List[str], excludes: List[str]) -> bool:
-    from fnmatch import fnmatch
-    ok = True if not includes else any(fnmatch(name, pat) for pat in includes)
-    if includes and not ok:
-        return False
-    if any(fnmatch(name, pat) for pat in excludes):
-        return False
-    return True
-
 
 # ───────────────────────── Setup ─────────────────────────
 
@@ -151,40 +106,24 @@ async def async_setup_platform(
     excludes: List[str] = config.get(CONF_EXCLUDE, DEFAULT_EXCLUDE)
     exts: List[str] = [e.lower() for e in config.get(CONF_MEDIA_EXTS, DEFAULT_MEDIA_EXTS)]
 
-    # Autodiscover subfolders that contain at least one matching media file
+    # Autodiscover subfolders that contain at least one matching media file (async-safe via executor)
     if not pools_cfg:
-        abs_root = _resolve_hass_path(hass, root)
-        if os.path.isdir(abs_root):
-            try:
-                for entry in sorted(os.listdir(abs_root)):
-                    full = os.path.join(abs_root, entry)
-                    if not os.path.isdir(full):
-                        continue
-                    try:
-                        has_media = any(
-                            f.lower().endswith(tuple(exts)) and _match_patterns(f, includes, excludes)
-                            for f in os.listdir(full)
-                        )
-                    except Exception:
-                        has_media = False
-                    if has_media:
-                        suffix = _derive_suffix(entry)
-                        pools_cfg.append(
-                            {
-                                "folder": entry,
-                                "name": f"Pools Media {entry.replace('_',' ')}",
-                                "entity_suffix": suffix,
-                                "unique_id": suffix,
-                            }
-                        )
-                if pools_cfg:
-                    _LOGGER.debug("pools(media): auto-discovered %d folders in %s", len(pools_cfg), abs_root)
-                else:
-                    _LOGGER.debug("pools(media): no matching media in %s", abs_root)
-            except Exception as e:
-                _LOGGER.exception("pools(media): autodiscovery error for %s: %s", abs_root, e)
-        else:
-            _LOGGER.debug("pools(media): media root not found: %s", abs_root)
+        discovered = await scan_media_folders(hass, root, exts, includes, excludes)
+        for entry in discovered:
+            suffix = _derive_suffix(entry)
+            pools_cfg.append(
+                {
+                    "folder": entry,
+                    "name": f"Pools Media {entry.replace('_',' ')}",
+                    "entity_suffix": suffix,
+                    "unique_id": suffix,
+                }
+            )
+        _LOGGER.debug(
+            "pools(media): auto-discovered %d folders in %s",
+            len(discovered),
+            resolve_path(hass, root),
+        )
 
     entities: List[SensorEntity] = []
     for item in pools_cfg[:255]:
@@ -216,7 +155,6 @@ async def async_setup_platform(
 
     if entities:
         add_entities(entities, update_before_add=True)
-
 
 # ───────────────────────── Entity ─────────────────────────
 
@@ -256,7 +194,7 @@ class MediaSensor(SensorEntity):
         }
 
         # Pool config
-        self.dir_path = _resolve_hass_path(hass, os.path.join(root, folder))
+        self.dir_path = resolve_path(hass, os.path.join(root, folder))
         self.root = root
         self.folder = folder
         self.selection_mode = selection_mode
@@ -275,8 +213,7 @@ class MediaSensor(SensorEntity):
         self.dir_mtime: Optional[float] = None
 
         # Register into global service registry
-        from . import POOLS as _REG
-        _REG[self.entity_id] = self
+        POOLS[self.entity_id] = self
 
     # -------------- HA properties --------------
 
@@ -306,17 +243,16 @@ class MediaSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         await self.async_force_reload_and_push_state()
 
-    # -------------- Scan & reload --------------
+    # -------------- Scan & reload (executor) --------------
 
     def _scan_dir(self) -> None:
-        """(Executor) Scan media folder with filters and extensions."""
+        """Scan media folder with filters and extensions."""
         self.files = []
         self.last_index = None
         self.last_file = None
         self.dir_mtime = None
 
         if not os.path.isdir(self.dir_path):
-            _LOGGER.debug("pools(media): folder not found: %s", self.dir_path)
             return
 
         try:
@@ -325,7 +261,7 @@ class MediaSensor(SensorEntity):
                 low = name.lower()
                 if not any(low.endswith(ext) for ext in self.exts):
                     continue
-                if not _match_patterns(name, self.includes, self.excludes):
+                if not match_patterns(name, self.includes, self.excludes):
                     continue
                 full = os.path.join(self.dir_path, name)
                 try:
@@ -339,7 +275,7 @@ class MediaSensor(SensorEntity):
             _LOGGER.exception("pools(media): scan error %s: %s", self.dir_path, e)
 
     def _maybe_reload(self) -> None:
-        """(Executor) Rescan; folders are small and cheap to read."""
+        """Cheap rescan; directories are small."""
         self._scan_dir()
 
     # -------------- URL building --------------
@@ -427,8 +363,6 @@ class MediaSensor(SensorEntity):
     def _update_and_push(self, url: str) -> None:
         """Update state & attributes; push to HA."""
         abs_file = os.path.join(self.dir_path, self.last_file) if self.last_file else None
-        rel_url = url or None
-
         self._state = url
         self._attrs.update(
             {
@@ -436,10 +370,9 @@ class MediaSensor(SensorEntity):
                 ATTR_FILE_COUNT: len(self.files),
                 ATTR_LAST_INDEX: self.last_index,
                 ATTR_LAST_FILE: self.last_file,
-                ATTR_RELATIVE_URL: rel_url,
+                ATTR_RELATIVE_URL: url or None,
                 ATTR_ABSOLUTE_URL: abs_file,
                 ATTR_FILE: abs_file,  # alias
-                # Note: dir mtime omitted for perf; add if needed later
             }
         )
         self.async_write_ha_state()
