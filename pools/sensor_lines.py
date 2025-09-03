@@ -1,16 +1,5 @@
 # All comments in English.
-# sensor_lines.py — "Lines" pools (formerly "text")
-# Features:
-# - selection_mode: random | queue
-# - no_repeat: N (history-based anti-repeat for random)
-# - fallback_text
-# - include/exclude (glob)
-# - lines_extensions
-# - limits: max_lines, max_chars
-# - Unicode normalization, BOM stripping, CRLF handling
-# - Autodiscovery when lines_pools not specified
-# - Reduced logging noise on expected conditions
-
+# Lines platform (formerly "text")
 from __future__ import annotations
 
 import logging
@@ -62,13 +51,11 @@ from .const import (
     ATTR_LAST_SHUFFLE,
     ATTR_LAST_RELOAD,
 )
-
-# Global registry imported from __init__.py (keys are entity_id → object with async_* APIs)
-from . import POOLS  # noqa: F401  (import used at runtime)
-
+from . import POOLS  # global registry for bulk services
+from .utils import slugify, resolve_path
+from .discover import scan_files
 
 _LOGGER = logging.getLogger(__name__)
-
 
 # ───────────────────────── Schemas ─────────────────────────
 
@@ -97,44 +84,11 @@ PLATFORM_SCHEMA = vol.Schema(
     }
 )
 
-
-# ───────────────────────── Utilities ─────────────────────────
-
-def _slugify(s: str) -> str:
-    s = s.lower()
-    out: List[str] = []
-    prev_us = False
-    for ch in s:
-        if ch.isalnum():
-            out.append(ch)
-            prev_us = False
-        else:
-            if not prev_us:
-                out.append("_")
-                prev_us = True
-    return "".join(out).strip("_")
-
+# ───────────────────────── Helpers ─────────────────────────
 
 def _derive_suffix(filename: str) -> str:
     base = os.path.splitext(os.path.basename(filename))[0]
-    return f"pools_lines_{_slugify(base)}"
-
-
-def _resolve_hass_path(hass: HomeAssistant, rel: str) -> str:
-    if rel.startswith("/"):
-        return rel
-    return hass.config.path(rel)
-
-
-def _match_patterns(name: str, includes: List[str], excludes: List[str]) -> bool:
-    from fnmatch import fnmatch
-    ok = True if not includes else any(fnmatch(name, pat) for pat in includes)
-    if includes and not ok:
-        return False
-    if any(fnmatch(name, pat) for pat in excludes):
-        return False
-    return True
-
+    return f"pools_lines_{slugify(base)}"
 
 # ───────────────────────── Setup ─────────────────────────
 
@@ -156,34 +110,24 @@ async def async_setup_platform(
     max_lines: int = config.get(CONF_MAX_LINES, DEFAULT_MAX_LINES)
     max_chars: int = config.get(CONF_MAX_CHARS, DEFAULT_MAX_CHARS)
 
-    # Autodiscover *.ext files if none specified.
+    # Autodiscover *.ext files if none specified (async-safe via executor).
     if not pools_cfg:
-        abs_dir = _resolve_hass_path(hass, directory)
-        if os.path.isdir(abs_dir):
-            try:
-                for entry in sorted(os.listdir(abs_dir)):
-                    low = entry.lower()
-                    if not any(low.endswith(ext) for ext in exts):
-                        continue
-                    if not _match_patterns(entry, includes, excludes):
-                        continue
-                    suffix = _derive_suffix(entry)
-                    pools_cfg.append(
-                        {
-                            "file": entry,
-                            "name": f"Pools Lines {os.path.splitext(entry)[0].replace('_',' ')}",
-                            "entity_suffix": suffix,
-                            "unique_id": suffix,
-                        }
-                    )
-                if pools_cfg:
-                    _LOGGER.debug("pools(lines): auto-discovered %d files in %s", len(pools_cfg), abs_dir)
-                else:
-                    _LOGGER.debug("pools(lines): no matching files in %s", abs_dir)
-            except Exception as e:
-                _LOGGER.exception("pools(lines): autodiscovery error for %s: %s", abs_dir, e)
-        else:
-            _LOGGER.debug("pools(lines): directory not found: %s", abs_dir)
+        discovered = await scan_files(hass, directory, exts, includes, excludes)
+        for entry in discovered:
+            suffix = _derive_suffix(entry)
+            pools_cfg.append(
+                {
+                    "file": entry,
+                    "name": f"Pools Lines {os.path.splitext(entry)[0].replace('_',' ')}",
+                    "entity_suffix": suffix,
+                    "unique_id": suffix,
+                }
+            )
+        _LOGGER.debug(
+            "pools(lines): auto-discovered %d files in %s",
+            len(discovered),
+            resolve_path(hass, directory),
+        )
 
     entities: List[SensorEntity] = []
     for item in pools_cfg[:255]:
@@ -213,7 +157,6 @@ async def async_setup_platform(
 
     if entities:
         add_entities(entities, update_before_add=True)
-
 
 # ───────────────────────── Entity ─────────────────────────
 
@@ -251,7 +194,7 @@ class LinesSensor(SensorEntity):
         }
 
         # Pool config
-        self.file_path = _resolve_hass_path(hass, os.path.join(directory, filename))
+        self.file_path = resolve_path(hass, os.path.join(directory, filename))
         self.selection_mode = selection_mode
         self.no_repeat = max(0, int(no_repeat))
         self.history: deque[int] = deque(maxlen=self.no_repeat)  # indices history for anti-repeat
@@ -267,8 +210,7 @@ class LinesSensor(SensorEntity):
         self.file_mtime: Optional[float] = None
 
         # Register into global service registry
-        from . import POOLS as _REG
-        _REG[self.entity_id] = self
+        POOLS[self.entity_id] = self
 
     # -------------- HA properties --------------
 
@@ -298,16 +240,15 @@ class LinesSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         await self.async_force_reload_and_push_state()
 
-    # -------------- Pool I/O --------------
+    # -------------- File I/O (executor) --------------
 
     def _load_file(self) -> None:
-        """(Executor) Read & parse the file, applying limits and normalization."""
+        """Read & parse the file, applying limits and normalization."""
         self.lines = []
         self.truncated = 0
         self.ignored_blank = 0
 
         if not os.path.exists(self.file_path):
-            _LOGGER.debug("pools(lines): file not found: %s", self.file_path)
             self.file_mtime = None
             return
 
@@ -334,7 +275,7 @@ class LinesSensor(SensorEntity):
             _LOGGER.exception("pools(lines): read error %s: %s", self.file_path, e)
 
     def _maybe_reload(self) -> None:
-        """(Executor) Reload if mtime changed; if file missing, graceful load."""
+        """Reload if mtime changed; if file missing, graceful load."""
         try:
             st = os.stat(self.file_path)
             if self.file_mtime is None or st.st_mtime != self.file_mtime:
