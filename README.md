@@ -1,81 +1,88 @@
 # 🎲 Home Assistant Random Pools
 
-Custom integration for Home Assistant that provides **randomized text 📝 and sound 🔊 sensors** from user-defined folders.  
-Perfect if you want your automations or bots to respond with random phrases, play different notification sounds, or give your smart home a playful personality 🐾.
+Custom integration for Home Assistant that provides **randomized lines 📝 and media 🔊 sensors** from user-defined files and folders.  
+Perfect if you want your automations or bots to respond with random phrases, play diverse notification sounds, or give your smart home a playful personality 🐾.
 
 ---
 
 ## ✨ Features
-- 📄 Load text pools from `.txt` files (one phrase per line).  
-- 🎶 Load sound pools from folders with audio files (`.mp3`, `.ogg`).  
-- 🎲 Each pool is exposed as a `sensor` that always provides one random entry.  
-- 🔄 Shuffle & reload without restarting Home Assistant.  
-- ⚙️ Safe fallbacks if a pool is empty.  
+- 📄 **Lines**: load pools from `.txt` files (one phrase per line).  
+- 🎶 **Media**: load pools from folders with any audio/video files (`.mp3`, `.ogg`, `.wav`, …).  
+- 🎲 Each pool is exposed as a `sensor` that always provides one entry.  
+- 🔄 Shuffle & reload pools on demand, no HA restart needed.  
+- 🛡 Safe **fallbacks** (`fallback_text` / `fallback_url`) if a pool is empty.  
+- 🚫 **No-repeat** mode with adjustable history (`no_repeat=N`).  
+- 📑 **Queue mode**: cycle sequentially instead of random.  
+- 🧹 Normalize text (BOM, Unicode, CRLF).  
+- 🧩 Autodiscover `.txt` files and media folders if you don’t list them explicitly.  
+- 🎛 Filters: `include` / `exclude` glob patterns.  
+- 🌐 Flexible URL serving: `serve_from: component | www | media`.  
+- 📏 Configurable limits (`max_lines`, `max_chars`).  
+- 🛠 Bulk services: `pools.shuffle_all` / `pools.reload_all`.  
+- 🧩 HACS-compatible (`hacs.json` included).
 
 ---
 
 ## 🛠 Example Use Cases
-- 🤖 **Random bot replies** — send different phrases in Telegram/Discord automations.  
-- 🗣 **Dynamic TTS** — pick a random greeting line before announcing the weather.  
-- 🚨 **Sound notifications** — choose a random alert sound when motion is detected.  
-- 🚀 **Startup events** — play a random "system online" phrase or sound.  
+- 🤖 **Random bot replies** — pick a different line for Telegram/Discord.  
+- 🗣 **Dynamic TTS** — random greeting before announcing the weather.  
+- 🚨 **Sound notifications** — random alert sound when motion is detected.  
+- 🚀 **Startup events** — playful phrase or media when HA boots.  
+- 🎮 **Game-like UX** — rotate through queues of sounds or text lines.  
 
 ---
 
 ## 📂 Example Configuration
 
-### Example 1: Text Pool
-Put a file `hello.txt` in `/config/www/pools/text/`:
-
-```
-Hello there!
-Welcome back home.
-Howdy partner 🐾
-```
-
-This creates a sensor:  
-
-```
-sensor.pools_text_hello
-```
-
-→ which randomly returns one of the lines.
-
----
-
-### Example 2: Sound Pool
-Create a folder `/config/www/pools/sounds/woof/` with `.mp3` files.  
-
-This creates a sensor:  
-
-```
-sensor.pools_sound_woof
-```
-
-→ which returns a random file path, ready for media players.
-
----
-
-### Example 3: Automation with Telegram
-
+### Minimal auto-discovery
 ```yaml
-alias: Send random hello in Telegram
-trigger:
-  - platform: event
-    event_type: telegram_command
-    event_data:
-      command: /hello
-action:
-  - service: telegram_bot.send_message
-    data:
-      message: "{{ states('sensor.pools_text_hello') }}"
+sensor:
+  - platform: pools
+    lines_directory: www/pools/lines
+    media_directory: www/pools/media
+    serve_from: www
+```
+→ creates one sensor per `.txt` file and per media subfolder.
+
+---
+
+### Manual pools
+```yaml
+sensor:
+  - platform: pools
+    lines_directory: www/cvbot_mind/text
+    lines_pools:
+      - file: hello.txt
+        name: Hello Lines
+        entity_suffix: pools_lines_hello
+
+    media_directory: www/cvbot_mind/media
+    media_pools:
+      - folder: alerts
+        name: Alert Sounds
+        entity_suffix: pools_media_alerts
+
+    selection_mode: random    # random | queue
+    no_repeat: 3
+    fallback_text: "N/A"
+    fallback_url: ""
+    serve_from: www
+    include: ["*.mp3", "*.ogg"]
+    exclude: ["*old*.mp3"]
+    lines_extensions: [".txt"]
+    media_extensions: [".mp3", ".ogg", ".wav", ".flac"]
+    max_lines: 512
+    max_chars: 512
 ```
 
 ---
 
-## ⚙️ Commands
+## ⚙️ Services
 - 🔀 `pools.shuffle` — reshuffle one or more sensors.  
 - ♻️ `pools.reload` — reload pools from disk.  
+- 🧹 `pools.reset_stats` — clear counters/history.  
+- 🔀 `pools.shuffle_all` — reshuffle every pool.  
+- ♻️ `pools.reload_all` — reload every pool.  
 
 ---
 
