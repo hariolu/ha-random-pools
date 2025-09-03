@@ -19,7 +19,6 @@ Perfect if you want your automations or bots to respond with random phrases, pla
 - 🌐 Flexible URL serving: `serve_from: component | www | media`.  
 - 📏 Configurable limits (`max_lines`, `max_chars`).  
 - 🛠 Bulk services: `pools.shuffle_all` / `pools.reload_all`.  
-- 🧩 HACS-compatible (`hacs.json` included).
 
 ---
 
