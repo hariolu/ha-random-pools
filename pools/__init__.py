@@ -1,13 +1,18 @@
 from __future__ import annotations
-import asyncio, logging
+
+import asyncio
+import logging
 from typing import Dict
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import Platform
 from homeassistant.helpers.typing import ConfigType
+
 from .const import DOMAIN
 
 PLATFORMS = [Platform.SENSOR]
 _LOGGER = logging.getLogger(__name__)
+
+# Global registry of pool entities (entity_id -> object exposing async_* APIs)
 POOLS: Dict[str, "BasePool"] = {}
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -16,10 +21,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         targets = entity_ids if isinstance(entity_ids, list) else [entity_ids] if entity_ids else []
         if call.data.get("all") or not targets:
             targets = list(POOLS.keys())
+
         tasks = []
         for eid in targets:
             pool = POOLS.get(eid)
-            if pool:
+            if pool and hasattr(pool, coro):
                 tasks.append(getattr(pool, coro)())
         if tasks:
             await asyncio.gather(*tasks)
