@@ -1,0 +1,28 @@
+shuffle:
+  name: Shuffle pool(s)
+  description: Pick a new entry for the given pool sensors.
+  fields:
+    entity_id:
+      description: One or more pool sensor entity IDs.
+
+reload:
+  name: Reload pool(s)
+  description: Reload underlying files/folders and pick a new entry.
+  fields:
+    entity_id:
+      description: One or more pool sensor entity IDs.
+
+reset_stats:
+  name: Reset stats
+  description: Reset counters for given pool sensors.
+  fields:
+    entity_id:
+      description: One or more pool sensor entity IDs.
+
+shuffle_all:
+  name: Shuffle ALL pools
+  description: Shuffle all registered pool sensors.
+
+reload_all:
+  name: Reload ALL pools
+  description: Reload all registered pool sensors.
