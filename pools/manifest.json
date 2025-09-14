@@ -1,10 +1,11 @@
 {
   "domain": "pools",
   "name": "Random Pools",
-  "version": "0.4.0",
-  "documentation": "https://github.com/yourname/ha-random-pools",
-  "issue_tracker": "https://github.com/yourname/ha-random-pools/issues",
-  "codeowners": ["@yourname"],
+  "version": "0.4.1",
+  "documentation": "https://github.com/hariolu/ha-random-pools",
+  "issue_tracker": "https://github.com/hariolu/ha-random-pools/issues",
+  "codeowners": ["@hariolu"],
   "iot_class": "local_polling",
   "requirements": []
+  "logo": "logo.png",
 }
