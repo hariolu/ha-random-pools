@@ -7,5 +7,5 @@
   "codeowners": ["@hariolu"],
   "iot_class": "local_polling",
   "requirements": []
-  "logo": "logo.png",
 }
+
