@@ -26,3 +26,68 @@ shuffle_all:
 reload_all:
   name: Reload ALL pools
   description: Reload all registered pool sensors.
+
+play_vlc:
+  name: Play media pool via VLC
+  description: >
+    Shuffles a media pool sensor (optional), builds a full URL from the pool's relative_url
+    and a base_url (or HA internal/external URL), then launches VLC on Android via notify command_activity.
+  fields:
+    entity_id:
+      name: Media pool entity
+      description: Media pool sensor entity_id (e.g. sensor.pools_media_bark)
+      required: true
+      example: sensor.pools_media_bark
+    shuffle:
+      name: Shuffle before play
+      description: Shuffle/advance the pool before launching VLC
+      required: false
+      default: true
+      example: true
+    base_url:
+      name: Base URL
+      description: Optional base URL (e.g. http://srvhole.local:8123). If omitted, HA internal_url/external_url is used.
+      required: false
+      example: http://srvhole.local:8123
+    notify_service:
+      name: Notify service
+      description: Notify service to call (e.g. notify.mobile_app_pixel_5)
+      required: false
+      default: notify.mobile_app_pixel_5
+      example: notify.mobile_app_pixel_5
+    intent_action:
+      name: Intent action
+      description: Android intent action
+      required: false
+      default: android.intent.action.VIEW
+      example: android.intent.action.VIEW
+    intent_package_name:
+      name: Intent package name
+      description: Android package to handle the intent
+      required: false
+      default: org.videolan.vlc
+      example: org.videolan.vlc
+    vlc_scheme:
+      name: VLC scheme wrapper
+      description: Wrap URL as vlc://<url> for VLC compatibility on some devices
+      required: false
+      default: false
+      example: false
+
+get_line:
+  name: Get line from lines pool
+  description: >
+    Optionally shuffles a lines pool sensor and returns the current line and attributes.
+    Use supports_response with response_variable in automations.
+  fields:
+    entity_id:
+      name: Lines pool entity
+      description: Lines pool sensor entity_id (e.g. sensor.pools_lines_bark)
+      required: true
+      example: sensor.pools_lines_bark
+    shuffle:
+      name: Shuffle before get
+      description: Shuffle/advance the pool before returning value
+      required: false
+      default: true
+      example: true

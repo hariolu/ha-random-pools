@@ -417,21 +417,27 @@ class MediaSensor(SensorEntity):
     # -------------- State push --------------
 
     def _update_and_push(self, url: str) -> None:
-        """Update state & attributes; push to HA."""
+        """Update state & attributes; push to HA.
+
+        NOTE:
+        - State is kept "clean" (filename only) to avoid hardcoded base URLs.
+        - Use ATTR_RELATIVE_URL to build the full URL in automations.
+        """
         abs_file = os.path.join(self.dir_path, self.last_file) if self.last_file else None
         rel_url = url or None
 
-        self._state = url
+        # Keep sensor state minimal: filename only (no /local/... in state)
+        self._state = self.last_file or ""
+
         self._attrs.update(
             {
                 ATTR_DIR: self.dir_path,
                 ATTR_FILE_COUNT: len(self.files),
                 ATTR_LAST_INDEX: self.last_index,
                 ATTR_LAST_FILE: self.last_file,
-                ATTR_RELATIVE_URL: rel_url,
-                ATTR_ABSOLUTE_URL: abs_file,
-                ATTR_FILE: abs_file,  # alias
-                # Note: dir mtime omitted for perf; add if needed later
+                ATTR_RELATIVE_URL: rel_url,   # /local/... or media-source://... or ''
+                ATTR_ABSOLUTE_URL: abs_file,  # /config/www/... absolute path
+                ATTR_FILE: abs_file,          # alias
             }
         )
         self.async_write_ha_state()

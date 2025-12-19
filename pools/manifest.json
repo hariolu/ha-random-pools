@@ -1,7 +1,7 @@
 {
   "domain": "pools",
   "name": "Random Pools",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "documentation": "https://github.com/hariolu/ha-random-pools",
   "issue_tracker": "https://github.com/hariolu/ha-random-pools/issues",
   "codeowners": ["@hariolu"],
